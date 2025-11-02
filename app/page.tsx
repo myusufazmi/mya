@@ -1,9 +1,11 @@
-import Image from "next/image";
+import { HomeHero } from '@/components/public/home-hero'
+import { ThemeShowcase } from '@/components/public/theme-showcase'
 
 export default function Home() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      Template
+    <div className="min-h-screen bg-white dark:bg-gray-900">
+      <HomeHero />
+      <ThemeShowcase />
     </div>
-  );
+  )
 }
