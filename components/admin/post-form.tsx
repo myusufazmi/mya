@@ -4,7 +4,11 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { generateSlug } from '@/lib/utils/slug'
-import { Save, Eye } from 'lucide-react'
+import { Save, Eye, ImageIcon, X } from 'lucide-react'
+import { RichTextEditor } from './rich-text-editor'
+import { TagManager } from './tag-manager'
+import { SEOMetadata } from './seo-metadata'
+import { MediaPickerModal } from './media-picker-modal'
 
 interface PostFormProps {
   postId?: string
@@ -15,8 +19,15 @@ interface PostFormProps {
     excerpt?: string
     status: string
     category_id?: string
+    featured_image_url?: string
+    tags?: string[]
     seo_title?: string
     seo_description?: string
+    seo_keywords?: string
+    og_title?: string
+    og_description?: string
+    og_image?: string
+    canonical_url?: string
     published_at?: string
   }
 }
@@ -30,6 +41,7 @@ interface Category {
 export function PostForm({ postId, initialData }: PostFormProps) {
   const router = useRouter()
   const [categories, setCategories] = useState<Category[]>([])
+  const [allTags, setAllTags] = useState<any[]>([])
   const [formData, setFormData] = useState({
     title: initialData?.title || '',
     slug: initialData?.slug || '',
@@ -37,26 +49,46 @@ export function PostForm({ postId, initialData }: PostFormProps) {
     excerpt: initialData?.excerpt || '',
     status: initialData?.status || 'draft',
     category_id: initialData?.category_id || '',
+    featured_image_url: initialData?.featured_image_url || '',
+  })
+  const [selectedTags, setSelectedTags] = useState<string[]>(initialData?.tags || [])
+  const [seoData, setSeoData] = useState({
     seo_title: initialData?.seo_title || '',
     seo_description: initialData?.seo_description || '',
+    seo_keywords: initialData?.seo_keywords || '',
+    og_title: initialData?.og_title || '',
+    og_description: initialData?.og_description || '',
+    og_image: initialData?.og_image || '',
+    canonical_url: initialData?.canonical_url || '',
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [showMediaPicker, setShowMediaPicker] = useState(false)
 
-  // Fetch categories
+  // Fetch categories and tags
   useEffect(() => {
-    const fetchCategories = async () => {
+    const fetchData = async () => {
       const supabase = createClient()
-      const { data } = await supabase
+      
+      // Fetch categories
+      const { data: categoriesData } = await supabase
         .from('categories')
         .select('id, name, slug')
         .order('name')
-      
-      if (data) {
-        setCategories(data)
+      if (categoriesData) {
+        setCategories(categoriesData)
+      }
+
+      // Fetch tags
+      const { data: tagsData } = await supabase
+        .from('tags')
+        .select('*')
+        .order('name')
+      if (tagsData) {
+        setAllTags(tagsData)
       }
     }
-    fetchCategories()
+    fetchData()
   }, [])
 
   // Auto-generate slug from title
@@ -88,9 +120,11 @@ export function PostForm({ postId, initialData }: PostFormProps) {
 
     const postData = {
       ...formData,
+      ...seoData,
       category_id: formData.category_id || null,
       status: status || formData.status,
       author_id: user.id,
+      tags: selectedTags,
       published_at: status === 'published' && !initialData ? new Date().toISOString() : initialData?.status === 'published' ? initialData.published_at : null,
     }
 
@@ -167,24 +201,48 @@ export function PostForm({ postId, initialData }: PostFormProps) {
         </div>
       </div>
 
+      {/* Featured Image */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Featured Image
+        </label>
+        {formData.featured_image_url ? (
+          <div className="relative inline-block">
+            <img
+              src={formData.featured_image_url}
+              alt="Featured"
+              className="h-48 w-auto rounded-lg border border-gray-300"
+            />
+            <button
+              type="button"
+              onClick={() => setFormData(prev => ({ ...prev, featured_image_url: '' }))}
+              className="absolute -top-2 -right-2 p-1 bg-red-600 text-white rounded-full hover:bg-red-700"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setShowMediaPicker(true)}
+            className="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition"
+          >
+            <ImageIcon className="h-4 w-4" />
+            <span>Select Image</span>
+          </button>
+        )}
+      </div>
+
       {/* Content */}
       <div>
-        <label htmlFor="content" className="block text-sm font-medium text-gray-700 mb-2">
+        <label className="block text-sm font-medium text-gray-700 mb-2">
           Content *
         </label>
-        <textarea
-          id="content"
-          name="content"
-          value={formData.content}
-          onChange={handleChange}
-          required
-          rows={15}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
-          placeholder="Enter post content (HTML or Markdown)"
+        <RichTextEditor
+          content={formData.content}
+          onChange={(content) => setFormData(prev => ({ ...prev, content }))}
+          placeholder="Start writing your post..."
         />
-        <p className="text-xs text-gray-500 mt-1">
-          Rich text editor coming soon! For now, use HTML or Markdown.
-        </p>
       </div>
 
       {/* Excerpt */}
@@ -248,49 +306,73 @@ export function PostForm({ postId, initialData }: PostFormProps) {
         </div>
       </div>
 
-      {/* SEO Fields */}
+      {/* Tags */}
       <div className="border-t pt-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">SEO Settings</h3>
-        
-        <div className="space-y-4">
-          <div>
-            <label htmlFor="seo_title" className="block text-sm font-medium text-gray-700 mb-2">
-              SEO Title
-            </label>
-            <input
-              type="text"
-              id="seo_title"
-              name="seo_title"
-              value={formData.seo_title}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Leave empty to use post title"
-              maxLength={60}
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              {formData.seo_title.length}/60 characters (optimal: 50-60)
-            </p>
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Tags</h3>
+        <div className="space-y-2">
+          <div className="flex flex-wrap gap-2">
+            {selectedTags.map((tagId) => {
+              const tag = allTags.find(t => t.id === tagId)
+              return tag ? (
+                <span
+                  key={tagId}
+                  className="inline-flex items-center space-x-1 px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
+                >
+                  <span>{tag.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedTags(prev => prev.filter(id => id !== tagId))}
+                    className="hover:bg-blue-200 rounded-full p-0.5"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              ) : null
+            })}
           </div>
-
-          <div>
-            <label htmlFor="seo_description" className="block text-sm font-medium text-gray-700 mb-2">
-              SEO Description
-            </label>
-            <textarea
-              id="seo_description"
-              name="seo_description"
-              value={formData.seo_description}
-              onChange={handleChange}
-              rows={3}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Meta description for search engines"
-              maxLength={160}
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              {formData.seo_description.length}/160 characters (optimal: 150-160)
-            </p>
-          </div>
+          <select
+            value=""
+            onChange={(e) => {
+              const tagId = e.target.value
+              if (tagId && !selectedTags.includes(tagId)) {
+                setSelectedTags(prev => [...prev, tagId])
+              }
+            }}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          >
+            <option value="">Add a tag...</option>
+            {allTags.filter(tag => !selectedTags.includes(tag.id)).map((tag) => (
+              <option key={tag.id} value={tag.id}>
+                {tag.name}
+              </option>
+            ))}
+          </select>
         </div>
+      </div>
+
+      {/* SEO Settings */}
+      <div className="border-t pt-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">SEO & Social Media</h3>
+        <SEOMetadata 
+          value={{
+            title: seoData.seo_title,
+            description: seoData.seo_description,
+            keywords: seoData.seo_keywords?.split(',').map(k => k.trim()).filter(k => k),
+            ogTitle: seoData.og_title,
+            ogDescription: seoData.og_description,
+            ogImage: seoData.og_image,
+            canonical: seoData.canonical_url,
+          }}
+          onChange={(data) => setSeoData({
+            seo_title: data.title || '',
+            seo_description: data.description || '',
+            seo_keywords: Array.isArray(data.keywords) ? data.keywords.join(', ') : '',
+            og_title: data.ogTitle || '',
+            og_description: data.ogDescription || '',
+            og_image: data.ogImage || '',
+            canonical_url: data.canonical || '',
+          })}
+        />
       </div>
 
       {/* Actions */}
@@ -325,6 +407,16 @@ export function PostForm({ postId, initialData }: PostFormProps) {
           </button>
         </div>
       </div>
+
+      {/* Media Picker Modal */}
+      <MediaPickerModal
+        isOpen={showMediaPicker}
+        onClose={() => setShowMediaPicker(false)}
+        onSelect={(media) => {
+          setFormData(prev => ({ ...prev, featured_image_url: media.file_path }))
+        }}
+        selectedId={formData.featured_image_url}
+      />
     </form>
   )
 }
